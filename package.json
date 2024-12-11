@@ -1,0 +1,25 @@
+{
+  "name": "e2e",
+  "version": "1.0.0",
+  "description": "`e2e`는 Playwright를 사용하여 채팅 애플리케이션의 엔드 투 엔드 테스트를 수행하는 프로젝트입니다.",
+  "main": "create_e2e_codes.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "playwright test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@playwright/test": "^1.49.0",
+    "@types/node": "^20.17.7",
+    "axios": "^1.7.8",
+    "dotenv": "^16.4.5",
+    "http-server": "^14.1.1",
+    "openai": "^4.73.1",
+    "playwright": "^1.49.0",
+    "typescript": "^5.7.2"
+  }
+}
