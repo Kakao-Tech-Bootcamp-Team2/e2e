@@ -75,27 +75,29 @@ test.describe('메시징 테스트', () => {
     for (const { user, text } of messages) {
       await helpers.sendMessage(user, text);
       
-      // // 모든 사용자의 화면에서 메시지가 표시되는지 확인
-      // await Promise.all(users.map(async viewer => {
-      //   await viewer.waitForSelector(`.message-content:has-text("${text}")`, {
-      //     timeout: 10000
-      //   });
-      // }));
+      // 모든 사용자의 화면에서 메시지가 표시되는지 확인
+      await Promise.all(users.map(async viewer => {
+        await viewer.waitForSelector(`.message-content:has-text("${text}")`, {
+          state: 'visible',
+          timeout: 30000
+        });
+      }));
     }
 
-    // // AI 호출 및 응답 확인
-    // await helpers.sendAIMessage(user1, '우리 대화에 대해 요약해줄 수 있나요?');
-    // await Promise.all(users.map(async user => {
-    //   await user.waitForSelector('.message-ai', {
-    //     timeout: 20000
-    //   });
-    // }));
+    // AI 호출 및 응답 확인
+    await helpers.sendAIMessage(user1, '우리 대화에 대해 요약해줄 수 있나요?');
+    await Promise.all(users.map(async user => {
+      await user.waitForSelector('.message-ai', {
+        state: 'visible',
+        timeout: 30000
+      });
+    }));
 
     // 테스트 종료 전 채팅방 확인
-    // for (const user of users) {
-    //   const finalRoomName = await user.locator('.chat-room-title').textContent();
-    //   expect(finalRoomName).toBe(roomParam);
-    // }
+    for (const user of users) {
+      const finalRoomName = await user.locator('.chat-room-title').textContent();
+      expect(finalRoomName).toBe(roomParam);
+    }
 
     // 리소스 정리
     await Promise.all(users.map(user => user.close()));
@@ -140,14 +142,14 @@ test.describe('메시징 테스트', () => {
 
     // 메시지가 완전히 로드될 때까지 대기
     await user2.waitForLoadState('networkidle');
-    // await user2.waitForSelector(`.message-content:has-text("${testMessage}")`, {
-    //   state: 'visible',
-    //   timeout: 30000
-    // });
+    await user2.waitForSelector(`.message-content:has-text("${testMessage}")`, {
+      state: 'visible',
+      timeout: 30000
+    });
 
     // 메시지에 호버 및 반응 버튼 클릭
     const messageElement = user2.locator('.message-actions').last();
-    // await messageElement.hover();
+    await messageElement.hover();
     
     // 반응 버튼이 나타날 때까지 대기 후 클릭
     const actionButton = messageElement.locator('button[title="리액션 추가"]');
@@ -155,19 +157,25 @@ test.describe('메시징 테스트', () => {
     await actionButton.click();
 
     // 이모지 피커의 첫 번째 이모지 선택
-    await messageElement.click('.emoji-picker-container button >> nth=0');
+    await messageElement.locator('.emoji-picker-container button').first().click();
     
     // 반응이 표시되는지 확인
-    // await Promise.all([
-    //   user1.waitForSelector('.reaction-badge', { timeout: 30000 }),
-    //   user2.waitForSelector('.reaction-badge', { timeout: 30000 })
-    // ]);
+    await Promise.all([
+      user1.waitForSelector('.reaction-badge', { 
+        state: 'visible',
+        timeout: 30000 
+      }),
+      user2.waitForSelector('.reaction-badge', { 
+        state: 'visible',
+        timeout: 30000 
+      })
+    ]);
 
     // 테스트 종료 전 채팅방 확인
-    // for (const user of [user1, user2]) {
-    //   const finalRoomName = await user.locator('.chat-room-title').textContent();
-    //   expect(finalRoomName).toBe(roomParam);
-    // }
+    for (const user of [user1, user2]) {
+      const finalRoomName = await user.locator('.chat-room-title').textContent();
+      expect(finalRoomName).toBe(roomParam);
+    }
 
     // 리소스 정리
     await Promise.all([user1.close(), user2.close()]);

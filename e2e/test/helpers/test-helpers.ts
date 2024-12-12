@@ -23,6 +23,16 @@ interface RoomInfo {
   hasPassword: boolean;
 }
 
+// 상수 타입 정의
+type AIType = 'wayneAI' | 'claudeAI' | 'gptAI';
+
+// 인터페이스 개선
+interface TestOptions {
+  timeout?: number;
+  retryCount?: number;
+  screenshotOnError?: boolean;
+}
+
 export class TestHelpers {
   private aiService: AIService;
   private messageService: MessageService;
@@ -34,7 +44,7 @@ export class TestHelpers {
       apiKey,
       model: process.env.OPENAI_MODEL || 'gpt-4-turbo-preview',
     });
-    this.messageService = new MessageService(apiKey);
+    this.messageService = new MessageService();
   }
 
   generateRoomName(prefix = 'Test') {
@@ -494,23 +504,6 @@ export class TestHelpers {
     }
   }
 
-  // 비밀번호 처리 개선
-  private async handleRoomPassword(page: Page, password: string, timeout: number) {
-    await page.waitForSelector('input[name="password"]', {
-      state: 'visible',
-      timeout
-    });
-
-    await Promise.all([
-      page.waitForNavigation({ 
-        timeout,
-        waitUntil: ['load', 'domcontentloaded', 'networkidle']
-      }),
-      page.fill('input[name="password"]', password),
-      page.click('button:has-text("입장")')
-    ]);
-  }
-
   // 연결 상태 확인 메서드
   private async waitForConnection(page: Page, timeout: number): Promise<boolean> {
     try {
@@ -894,18 +887,6 @@ export class TestHelpers {
     }
   }
 
-  // 비밀번호 처리를 위한 헬퍼 메서드
-  private async handleRoomPassword(page: Page, password?: string) {
-    if (password) {
-      await page.waitForSelector('input[name="password"]', {
-        state: 'visible',
-        timeout: 30000
-      });
-      await page.fill('input[name="password"]', password);
-      await page.click('button:has-text("입장")');
-    }
-  }
-
   // 채팅방 로드 대기를 위한 헬퍼 메서드
   private async waitForRoomLoad(page: Page) {
     // 채팅방 UI 로드 확인
@@ -930,6 +911,51 @@ export class TestHelpers {
       });
     } catch (screenshotError) {
       console.error('Screenshot failed:', screenshotError);
+    }
+  }
+
+  private async withRetry<T>(
+    action: () => Promise<T>,
+    options: TestOptions = {}
+  ): Promise<T> {
+    const retryCount = options.retryCount ?? 3;
+    let lastError: Error = new Error('Unknown error');
+
+    for (let i = 0; i < retryCount; i++) {
+      try {
+        return await action();
+      } catch (error) {
+        lastError = error;
+        console.warn(`시도 ${i + 1}/${retryCount} 실패:`, error);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+    
+    throw lastError;
+  }
+
+  private async measurePerformance<T>(
+    action: () => Promise<T>,
+    actionName: string
+  ): Promise<T> {
+    const startTime = Date.now();
+    try {
+      const result = await action();
+      const duration = Date.now() - startTime;
+      console.log(`${actionName} 완료: ${duration}ms`);
+      return result;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      console.error(`${actionName} 실패 (${duration}ms):`, error);
+      throw error;
+    }
+  }
+
+  async cleanup() {
+    try {
+      this.existingRooms.clear();
+    } catch (error) {
+      console.error('리소스 정리 실패:', error);
     }
   }
 }

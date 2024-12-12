@@ -1,6 +1,48 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, Page } from '@playwright/test';
 import { TestHelpers } from '../helpers/test-helpers';
 import path from 'path';
+
+// 페이지 객체 정의
+class ChatRoomPage {
+  constructor(private page: Page) {}
+
+  async waitForChatUI() {
+    await this.page.waitForSelector('.chat-input-wrapper', {
+      state: 'visible',
+      timeout: 30000
+    });
+  }
+
+  async uploadImage(imagePath: string) {
+    const fileInput = await this.page.waitForSelector('input[type="file"]', {
+      state: 'attached',
+      timeout: 30000
+    });
+    await fileInput.setInputFiles(imagePath);
+    
+    // 프리뷰 대기 및 전송
+    await this.page.waitForSelector('.file-preview-item img', { state: 'visible', timeout: 30000 });
+    await this.page.waitForTimeout(1000);
+
+    const submitButton = await this.page.waitForSelector(
+      'button[type="submit"], .chat-input-actions button[title*="보내기"], .chat-input-actions button.send-button',
+      { state: 'visible', timeout: 30000 }
+    );
+    await submitButton.waitForElementState('stable');
+    await submitButton.click();
+  }
+
+  async waitForImageMessage() {
+    await this.page.waitForSelector('.upload-progress', {
+      state: 'detached',
+      timeout: 30000
+    }).catch(() => {});
+
+    const imgElement = await this.page.locator('.message-content img').first();
+    await expect(imgElement).toBeVisible({ timeout: 30000 });
+    return imgElement;
+  }
+}
 
 test.describe('이미지 업로드 테스트', () => {
   const helpers = new TestHelpers();
@@ -40,111 +82,53 @@ test.describe('이미지 업로드 테스트', () => {
       expect(userRoomParam).toBe(uploaderRoomParam);
     }
 
-    // 이미지 업로드
+    const uploaderPage = new ChatRoomPage(uploader);
+    const viewerPage = new ChatRoomPage(viewer);
+
+    // 이미지 업로드 실행
     const imagePath = path.join(__dirname, '../fixtures/images/mufc_logo.png');
+    await uploaderPage.waitForChatUI();
+    await uploaderPage.uploadImage(imagePath);
 
-    // 채팅 UI가 완전히 로드될 때까지 대기
-    await uploader.waitForSelector('.chat-input-wrapper', {
-      state: 'visible',
-      timeout: 30000
-    });
-    
-    // 파일 입력 필드 대기 및 파일 설정
-    const fileInput = await uploader.waitForSelector('input[type="file"]', {
-      state: 'attached',
-      timeout: 30000
-    });
-    await fileInput.setInputFiles(imagePath);
-
-    // 파일 프리뷰 표시 및 안정화 대기
-    await uploader.waitForSelector('.file-preview-item img', {
-      state: 'visible',
-      timeout: 30000
-    });
-    await uploader.waitForTimeout(1000); // 프리뷰 안정화를 위한 잠시 대기
-
-    // 전송 버튼 찾기 및 클릭
-    const submitButton = await uploader.waitForSelector(
-      'button[type="submit"], .chat-input-actions button[title*="보내기"], .chat-input-actions button.send-button', 
-      {
-        state: 'visible',
-        timeout: 30000
-      }
-    );
-    
-    // 버튼이 클릭 가능한 상태가 될 때까지 대기
-    await submitButton.waitForElementState('stable');
-    await submitButton.click();
-
-    // 업로드 진행 상태 표시 사라질 때까지 대기 (있는 경우)
-    await uploader.waitForSelector('.upload-progress', {
-      state: 'detached',
-      timeout: 30000
-    }).catch(() => {}); // 진행 상태 표시가 없을 수 있으므로 에러 무시
-
-    // 이미지 메시지가 나타날 때까지 대기
-    const messageSelector = '.message-content:has(img)';
-    await Promise.all([
-      uploader.waitForSelector(messageSelector, { timeout: 30000 }),
-      viewer.waitForSelector(messageSelector, { timeout: 30000 })
+    // 양쪽에서 이미지 수신 확인
+    const [uploaderImg, viewerImg] = await Promise.all([
+      uploaderPage.waitForImageMessage(),
+      viewerPage.waitForImageMessage()
     ]);
 
-    // 이미지 로드 완료 확인 및 검증
-    for (const page of [uploader, viewer]) {
-      // 이미지 요소 찾기
-      const imgElement = await page.locator('.message-content img').first();
-      
-      // 이미지가 실제로 로드될 때까지 대기
-      await expect(imgElement).toBeVisible({ timeout: 30000 });
-      
-      // 이미지 속성 확인
+    // 이미지 검증
+    for (const imgElement of [uploaderImg, viewerImg]) {
       const imgSrc = await imgElement.getAttribute('src');
       expect(imgSrc).toBeTruthy();
       
-      // 이미지 크기 확인
-      const dimensions = await imgElement.evaluate((img) => {
-        return {
-          naturalWidth: (img as HTMLImageElement).naturalWidth,
-          naturalHeight: (img as HTMLImageElement).naturalHeight
-        };
-      });
+      const dimensions = await imgElement.evaluate((img) => ({
+        naturalWidth: (img as HTMLImageElement).naturalWidth,
+        naturalHeight: (img as HTMLImageElement).naturalHeight
+      }));
+      
       expect(dimensions.naturalWidth).toBeGreaterThan(0);
       expect(dimensions.naturalHeight).toBeGreaterThan(0);
-      
-      // 이미지 로드 상태 확인
-      await imgElement.evaluate(img => {
-        return new Promise((resolve, reject) => {
-          if (img instanceof HTMLImageElement) {
-            if (img.complete) {
-              if (img.naturalWidth === 0) {
-                reject(new Error('Image failed to load'));
-              }
-              resolve(true);
-            } else {
-              img.onload = () => resolve(true);
-              img.onerror = () => reject(new Error('Image failed to load'));
-            }
-          }
-        });
-      });
+
+      // 이미지 드 상태 확인 개선
+      await expect(async () => {
+        const isLoaded = await imgElement.evaluate((img: HTMLImageElement) => 
+          img.complete && img.naturalWidth > 0
+        );
+        expect(isLoaded).toBeTruthy();
+      }).toPass({ timeout: 30000 });
     }
 
-    // // AI에게 이미지 분석 요청
-    // await helpers.sendAIMessage(uploader, '방금 공유된 이미지는 어떤 이미지인가요?');
-    
-    // // AI 응답 대기 및 검증
-    // const aiResponse = await uploader.waitForSelector('.message-ai', {
-    //   timeout: 30000
-    // });
-    // const responseText = await aiResponse.textContent();
-    // expect(responseText?.toLowerCase()).toMatch(/manchester|united|logo|football/i);
+    // AI 이미지 분석 테스트 활성화
+    await helpers.sendAIMessage(uploader, '방금 공유된 이미지는 어떤 이미지인가요?');
+    const aiResponse = await uploader.waitForSelector('.message-ai', { 
+      timeout: 60000,
+      state: 'visible' 
+    });
+    const responseText = await aiResponse.textContent();
+    expect(responseText?.toLowerCase(), 'AI 응답이 예상 키워드를 포함하지 않음').toMatch(
+      /(image|picture|photo|file|uploaded)/i
+    );
 
-    // 테스트 종료 전 채팅방 확인
-    // for (const page of [uploader, viewer]) {
-    //   const finalRoomName = await page.locator('.chat-room-title').textContent();
-    //   expect(finalRoomName).toBe(uploaderRoomParam);
-    // }
-    
     // 리소스 정리
     await Promise.all([uploader.close(), viewer.close()]);
   });

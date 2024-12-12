@@ -29,20 +29,26 @@ test.describe('고급 메시징 테스트', () => {
     const markdownMessage = await messageService.generateMessage(markdownPrompt);
     await helpers.sendMessage(page, markdownMessage);
 
-    // 마크다운 렌더링 확인
-    // await expect(page.locator('h1')).toBeVisible();
-    // await expect(page.locator('ul > li')).toHaveCount(2);
-    // await expect(page.locator('pre code')).toBeVisible();
-    // await expect(page.locator('strong')).toBeVisible();
-    // await expect(page.locator('em')).toBeVisible();
+    // 타임아웃 설정 추가
+    test.setTimeout(30000);
 
-    // 실제 내용 확인
-    // const title = await page.locator('h1').textContent();
-    // expect(title).toBe('웹 개발 기초');
+    // 마크다운 렌더링 확인 (주석 제거)
+    await expect(page.locator('h1')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('ul > li')).toHaveCount(2);
+    await expect(page.locator('pre code')).toBeVisible();
+    await expect(page.locator('strong')).toBeVisible();
+    await expect(page.locator('em')).toBeVisible();
 
-    // 코드 블록 내용 확인
-    // const codeBlock = await page.locator('pre code').textContent();
-    // expect(codeBlock).toContain('function') || expect(codeBlock).toContain('const');
+    // 실제 내용 확인 (주석 제거)
+    const title = await page.locator('h1').textContent();
+    expect(title).toBe('웹 개발 기초');
+
+    const codeBlock = await page.locator('pre code').textContent();
+    expect(codeBlock).toBeTruthy();
+    expect(codeBlock?.includes('function') || codeBlock?.includes('const')).toBeTruthy();
+
+    // 테스트 정리
+    await page.close();
   });
 
   test('다양한 마크다운 요소 테스트', async ({ browser }) => {
@@ -53,7 +59,7 @@ test.describe('고급 메시징 테스트', () => {
 
     // 다양한 마크다운 요소를 포함한 메시지 생성
     const complexMarkdownPrompt = `
-다음 요소들을 모두 포함하는 마크다운 형식의 회의 요약문을 작성해주세요:
+다음 요소들을 모두 포함하�� 마크다운 형식의 회의 요약문을 작성해주세요:
 - "팀 회의 요약" (h1 제목)
 - "주요 안건" (h2 부제목)
 - 3개의 체크리스트 항목
@@ -65,20 +71,32 @@ test.describe('고급 메시징 테스트', () => {
     const complexMarkdown = await messageService.generateMessage(complexMarkdownPrompt);
     await helpers.sendMessage(page, complexMarkdown);
 
-    // 각 마크다운 요소 렌더링 확인
-    // await expect(page.locator('h1')).toBeVisible();
-    // await expect(page.locator('h2')).toBeVisible();
-    // await expect(page.locator('input[type="checkbox"]')).toBeVisible();
-    // await expect(page.locator('pre code')).toBeVisible();
-    // await expect(page.locator('blockquote')).toBeVisible();
-    // await expect(page.locator('strong')).toBeVisible();
-    // await expect(page.locator('em')).toBeVisible();
+    try {
+      // 각 마크다운 요소 렌더링 확인 (주석 제거)
+      await expect(page.locator('h1')).toBeVisible({ timeout: 5000 });
+      await expect(page.locator('h2')).toBeVisible();
+      await expect(page.locator('input[type="checkbox"]')).toHaveCount(3);
+      await expect(page.locator('pre code')).toBeVisible();
+      await expect(page.locator('blockquote')).toBeVisible();
+      await expect(page.locator('strong')).toBeVisible();
+      await expect(page.locator('em')).toBeVisible();
 
-    // 구조 검증
-    // const headlines = await page.locator('h1, h2').count();
-    // expect(headlines).toBeGreaterThanOrEqual(2);
-    
-    // const checklistItems = await page.locator('input[type="checkbox"]').count();
-    // expect(checklistItems).toBeGreaterThanOrEqual(3);
+      // 구조 검증 (주석 제거)
+      const headlines = await page.locator('h1, h2').count();
+      expect(headlines).toBeGreaterThanOrEqual(2);
+      
+      const checklistItems = await page.locator('input[type="checkbox"]').count();
+      expect(checklistItems).toBeGreaterThanOrEqual(3);
+    } catch (error) {
+      console.error('마크다운 요소 테스트 실패:', error);
+      throw error;
+    } finally {
+      await page.close();
+    }
+  });
+
+  // 테스트 후 정리
+  test.afterAll(async () => {
+    messageService = new MessageService();
   });
 });

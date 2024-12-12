@@ -3,39 +3,41 @@ import { TestHelpers } from '../helpers/test-helpers';
 
 test.describe('AI 축구 논쟁 테스트', () => {
   const helpers = new TestHelpers();
+  const DEBATE_TIMEOUT = 2000;
+  let messiSupporter, ronaldoSupporter;
 
-  test('메시 vs 호날두 논쟁', async ({ browser }) => {
-    const roomPrefix = 'Football-Debate';
-    
+  test.beforeEach(async ({ browser }) => {
     // GPT 사용자 (메시 지지자) 설정
-    const messiSupporter = await browser.newPage();
+    messiSupporter = await browser.newPage();
     const messiCreds = helpers.getAITestUser('gpt');
     await helpers.registerUser(messiSupporter, messiCreds);
-    
-    // 메시 지지자가 방 생성 및 정확한 방 이름 저장
-    const createdRoomName = await helpers.joinOrCreateRoom(messiSupporter, roomPrefix);
-    console.log(`Created room name: ${createdRoomName}`);
 
-    // 생성된 방의 URL 파라미터 확인
+    // Claude 사용자 (호날두 지지자) 설정
+    ronaldoSupporter = await browser.newPage();
+    const ronaldoCreds = helpers.getAITestUser('claude');
+    await helpers.registerUser(ronaldoSupporter, ronaldoCreds);
+  });
+
+  test.afterEach(async () => {
+    await Promise.all([
+      messiSupporter?.close(),
+      ronaldoSupporter?.close()
+    ]);
+  });
+
+  test('메시 vs 호날두 논쟁', async () => {
+    const roomPrefix = 'Football-Debate';
+    
+    // 방 생성 및 입장
+    const createdRoomName = await helpers.joinOrCreateRoom(messiSupporter, roomPrefix);
     const messiUrl = messiSupporter.url();
     const roomParam = new URLSearchParams(new URL(messiUrl).search).get('room');
     
     if (!roomParam) {
-      throw new Error('Failed to get room name from URL');
+        throw new Error('방 생성에 실패했습니다.');
     }
     
-    // Claude 사용자 (호날두 지지자) 설정 및 같은 방으로 입장
-    const ronaldoSupporter = await browser.newPage();
-    const ronaldoCreds = helpers.getAITestUser('claude');
-    await helpers.registerUser(ronaldoSupporter, ronaldoCreds);
     await helpers.joinRoomByURLParam(ronaldoSupporter, roomParam);
-
-    // 양쪽 모두 동일한 채팅방에 있는지 확인
-    for (const page of [messiSupporter, ronaldoSupporter]) {
-      const userHostUrl = page.url();
-    	const userRoomParam = new URLSearchParams(new URL(userHostUrl).search).get('room');
-      expect(userRoomParam).toBe(roomParam);
-    }
 
     // 논쟁 주제 및 포인트 정의
     const debatePoints = [
@@ -73,7 +75,7 @@ test.describe('AI 축구 논쟁 테스트', () => {
       },
       {
         messiPoint: "메시는 자연스러운 재능과 천부적인 감각으로 축구를 예술로 승화시킵니다.",
-        ronaldoResponse: "호날두는 끊임없는 노력과 자기관리로 최정상에 오른 프로페셔널의 표본입니다.",
+        ronaldoResponse: "호날두는 끊임없는 노력과 자기관리로 최정상에 오른 프로페셔의 표본입니다.",
       },
       {
         messiPoint: "메시는 아르헨티나 대표팀을 월드컵 우승으로 이끌며 진정한 리더십을 보여줬습니다.",
@@ -81,47 +83,44 @@ test.describe('AI 축구 논쟁 테스트', () => {
       }
     ];
 
-    // 논쟁 진행
-    for (const [index, point] of debatePoints.entries()) {
-      // 메시 지지자의 주장
+    // 논쟁 진행 및 검증
+    for (const point of debatePoints) {
       await helpers.sendMessage(messiSupporter, point.messiPoint);
-
-      // 잠시 대기
-      await messiSupporter.waitForTimeout(2000);
-
-      // 호날두 지지자의 반박
+      await messiSupporter.waitForTimeout(DEBATE_TIMEOUT);
+      
       await helpers.sendMessage(ronaldoSupporter, point.ronaldoResponse);
-
-      // 대화 간격을 위한 대기
-      await ronaldoSupporter.waitForTimeout(2000);
+      await ronaldoSupporter.waitForTimeout(DEBATE_TIMEOUT);
     }
 
-    // 대화 내용 검증
+    // 메시지 내용 검증
     const messiMessages = await helpers.getConversationHistory(messiSupporter);
     const ronaldoMessages = await helpers.getConversationHistory(ronaldoSupporter);
 
-    // // 메시 관련 메시지 검증
-    // expect(messiMessages.filter(m => m.text.toLowerCase().includes('messi') || 
-    //                                m.text.toLowerCase().includes('메시'))).toHaveLength(10);
+    // 메시 관련 메시지 검증
+    const messiRelatedMessages = messiMessages.filter(m => 
+      m.text.toLowerCase().includes('messi') || 
+      m.text.toLowerCase().includes('메시')
+    );
+    expect(messiRelatedMessages, '메시 관련 메시지 수가 일치하지 않음').toHaveLength(debatePoints.length);
 
-    // // 호날두 관련 메시지 검증
-    // expect(ronaldoMessages.filter(m => m.text.toLowerCase().includes('ronaldo') || 
-    //                                  m.text.toLowerCase().includes('호날두'))).toHaveLength(10);
+    // 호날두 관련 메시지 검증
+    const ronaldoRelatedMessages = ronaldoMessages.filter(m => 
+      m.text.toLowerCase().includes('ronaldo') || 
+      m.text.toLowerCase().includes('호날두')
+    );
+    expect(ronaldoRelatedMessages, '호날두 관련 메시지 수가 일치하지 않음').toHaveLength(debatePoints.length);
 
-    // // AI 응답 확인
-    // const messiAIResponses = await messiSupporter.locator('.message-ai').count();
-    // const ronaldoAIResponses = await ronaldoSupporter.locator('.message-ai').count();
+    // AI 응답 검증
+    const messiAIResponses = await messiSupporter.locator('.message-ai').count();
+    const ronaldoAIResponses = await ronaldoSupporter.locator('.message-ai').count();
 
-    // expect(messiAIResponses).toBe(10);
-    // expect(ronaldoAIResponses).toBe(10);
+    expect(messiAIResponses, 'AI 메시지 수가 일치하지 않음').toBe(debatePoints.length);
+    expect(ronaldoAIResponses, 'AI 메시지 수가 일치하지 않음').toBe(debatePoints.length);
 
-    // // 테스트 종료 전 채팅방 확인
-    // for (const page of [messiSupporter, ronaldoSupporter]) {
-    //   const finalRoomName = await page.locator('.chat-room-title').textContent();
-    //   expect(finalRoomName).toBe(roomParam);
-    // }
-
-    // 리소스 정리
-    await Promise.all([messiSupporter.close(), ronaldoSupporter.close()]);
+    // 최종 채팅방 상태 검증
+    for (const page of [messiSupporter, ronaldoSupporter]) {
+      const finalRoomName = await page.locator('.chat-room-title').textContent();
+      expect(finalRoomName, '채팅방 이름이 일치하지 않음').toBe(roomParam);
+    }
   });
 });
